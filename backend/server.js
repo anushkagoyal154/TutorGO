@@ -9,8 +9,8 @@ const resumeRoutes = require("./routes/resumeRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
 const coachingRequestRoutes = require("./routes/coachingRequestRoutes");
 const matchingRoutes = require("./routes/matchingRoutes");
-
-
+const bookingRoutes = require("./routes/bookingRoutes");
+const tutorRequestRoutes=require("./routes/tutorRequestRoutes")
 const app = express();
 
 
@@ -45,6 +45,8 @@ app.use(express.json());
 // ----------------------------------
 
 const tutorSockets = new Map();
+app.set("io", io);
+app.set("tutorSockets", tutorSockets);
 
 
 // ----------------------------------
@@ -189,7 +191,11 @@ app.use(
     matchingRoutes
 );
 
-
+app.use("/api/bookings", bookingRoutes);
+app.use(
+    "/api/tutor-requests",
+    tutorRequestRoutes
+);
 // ----------------------------------
 // Start Server
 // ----------------------------------

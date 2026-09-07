@@ -1,11 +1,13 @@
-import StudentDashboard from "./student/StudentDashboard";
+import Home from "./Home";
+
 
 function App() {
 
     return (
-        <StudentDashboard />
+        <Home />
     );
 
 }
+
 
 export default App;

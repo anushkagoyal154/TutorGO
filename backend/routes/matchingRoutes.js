@@ -18,17 +18,17 @@ router.get("/:requestId", (req, res) => {
     // ----------------------------------
 
     const requestSQL = `
-        SELECT
-            cr.request_id,
-            cr.student_id,
-            cr.subject_id,
-            cr.topic,
-            cr.preferred_time,
-            cr.budget,
-            cr.mode,
+        SELECT 
+            cr.request_id, 
+            cr.student_id, 
+            cr.subject_id, 
+            cr.topic, 
+            cr.preferred_time, 
+            cr.budget, 
+            cr.mode, 
             s.subject_name
         FROM Coaching_Request cr
-        JOIN Subject s
+        JOIN Subject s 
             ON cr.subject_id = s.subject_id
         WHERE cr.request_id = ?
     `;
@@ -139,9 +139,12 @@ router.get("/:requestId", (req, res) => {
                         tutorResults.map(tutor => {
 
 
+                            // -------------------------
                             // Expertise Score
+                            // -------------------------
 
                             let expertiseScore = 0;
+
 
                             if (
                                 tutor.expertise_level === "Advanced"
@@ -150,6 +153,7 @@ router.get("/:requestId", (req, res) => {
                                 expertiseScore = 100;
 
                             }
+
                             else if (
                                 tutor.expertise_level === "Intermediate"
                             ) {
@@ -157,6 +161,7 @@ router.get("/:requestId", (req, res) => {
                                 expertiseScore = 70;
 
                             }
+
                             else if (
                                 tutor.expertise_level === "Beginner"
                             ) {
@@ -166,23 +171,32 @@ router.get("/:requestId", (req, res) => {
                             }
 
 
+                            // -------------------------
                             // Rating Score
+                            // -------------------------
 
                             const ratingScore =
                                 (parseFloat(tutor.rating || 0) / 5) * 100;
 
 
+                            // -------------------------
                             // Price Score
+                            // -------------------------
 
                             let priceScore = 100;
+
 
                             if (request.budget) {
 
                                 const price =
-                                    parseFloat(tutor.price_per_session);
+                                    parseFloat(
+                                        tutor.price_per_session
+                                    );
 
                                 const budget =
-                                    parseFloat(request.budget);
+                                    parseFloat(
+                                        request.budget
+                                    );
 
 
                                 if (price <= budget) {
@@ -190,13 +204,18 @@ router.get("/:requestId", (req, res) => {
                                     priceScore =
                                         ((budget - price) / budget) * 100;
 
+
                                     // Minimum 50 points
                                     // for being within budget
 
                                     priceScore =
-                                        Math.max(50, priceScore);
+                                        Math.max(
+                                            50,
+                                            priceScore
+                                        );
 
                                 }
+
                                 else {
 
                                     priceScore = 0;
@@ -206,15 +225,22 @@ router.get("/:requestId", (req, res) => {
                             }
 
 
+                            // -------------------------
                             // Availability Score
+                            // -------------------------
 
                             const availabilityScore = 100;
 
 
+                            // -------------------------
                             // Experience Score
+                            // -------------------------
 
                             const experience =
-                                parseFloat(tutor.experience || 0);
+                                parseFloat(
+                                    tutor.experience || 0
+                                );
+
 
                             const experienceScore =
                                 Math.min(
@@ -242,9 +268,11 @@ router.get("/:requestId", (req, res) => {
 
                             return {
 
-                                tutor_id: tutor.tutor_id,
+                                tutor_id:
+                                    tutor.tutor_id,
 
-                                name: tutor.name,
+                                name:
+                                    tutor.name,
 
                                 qualification:
                                     tutor.qualification,
@@ -278,7 +306,9 @@ router.get("/:requestId", (req, res) => {
                                 },
 
                                 match_score:
-                                    Number(matchScore.toFixed(2))
+                                    Number(
+                                        matchScore.toFixed(2)
+                                    )
 
                             };
 
@@ -293,6 +323,95 @@ router.get("/:requestId", (req, res) => {
                         (a, b) =>
                             b.match_score - a.match_score
                     );
+
+
+                    // ==================================
+                    // SOCKET.IO NOTIFICATION
+                    // ==================================
+
+                    if (matchedTutors.length > 0) {
+
+                        const bestTutor =
+                            matchedTutors[0];
+
+
+                        // Get Socket.IO instance
+                        const io =
+                            req.app.get("io");
+
+
+                        // Get tutor socket map
+                        const tutorSockets =
+                            req.app.get("tutorSockets");
+
+
+                        // Find the socket of the
+                        // matched tutor
+
+                        const tutorSocketId =
+                            tutorSockets.get(
+                                Number(bestTutor.tutor_id)
+                            );
+
+
+                        // If tutor is online,
+                        // send request in real time
+
+                        if (
+                            io &&
+                            tutorSocketId
+                        ) {
+
+                            io.to(tutorSocketId).emit(
+                                "newCoachingRequest",
+                                {
+
+                                    request_id:
+                                        request.request_id,
+
+                                    student_id:
+                                        request.student_id,
+
+                                    subject_id:
+                                        request.subject_id,
+
+                                    subject_name:
+                                        request.subject_name,
+
+                                    topic:
+                                        request.topic,
+
+                                    preferred_time:
+                                        request.preferred_time,
+
+                                    budget:
+                                        request.budget,
+
+                                    mode:
+                                        request.mode,
+
+                                    tutor_id:
+                                        bestTutor.tutor_id
+
+                                }
+                            );
+
+
+                            console.log(
+                                `New request sent to Tutor ${bestTutor.tutor_id}`
+                            );
+
+                        }
+
+                        else {
+
+                            console.log(
+                                `Tutor ${bestTutor.tutor_id} is not connected`
+                            );
+
+                        }
+
+                    }
 
 
                     // ----------------------------------
@@ -337,9 +456,11 @@ router.get("/:requestId", (req, res) => {
                     });
 
                 }
+
             );
 
         }
+
     );
 
 });
