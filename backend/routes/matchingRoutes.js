@@ -363,38 +363,33 @@ router.get("/:requestId", (req, res) => {
                         ) {
 
                             io.to(tutorSocketId).emit(
-                                "newCoachingRequest",
-                                {
+    "newCoachingRequest",
+    {
+        request_id: request.request_id,
 
-                                    request_id:
-                                        request.request_id,
+        student_id: request.student_id,
 
-                                    student_id:
-                                        request.student_id,
+        subject_id: request.subject_id,
 
-                                    subject_id:
-                                        request.subject_id,
+        subject_name: request.subject_name,
 
-                                    subject_name:
-                                        request.subject_name,
+        topic: request.topic,
 
-                                    topic:
-                                        request.topic,
+        preferred_time: request.preferred_time,
 
-                                    preferred_time:
-                                        request.preferred_time,
+        budget: request.budget,
 
-                                    budget:
-                                        request.budget,
+        mode: request.mode,
 
-                                    mode:
-                                        request.mode,
+        tutor_id: bestTutor.tutor_id,
 
-                                    tutor_id:
-                                        bestTutor.tutor_id
+        slot_id: bestTutor.available_slot.slot_id,
 
-                                }
-                            );
+        start_time: bestTutor.available_slot.start_time,
+
+        end_time: bestTutor.available_slot.end_time
+    }
+);
 
 
                             console.log(

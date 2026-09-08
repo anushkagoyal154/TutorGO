@@ -10,7 +10,9 @@ const availabilityRoutes = require("./routes/availabilityRoutes");
 const coachingRequestRoutes = require("./routes/coachingRequestRoutes");
 const matchingRoutes = require("./routes/matchingRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
-const tutorRequestRoutes=require("./routes/tutorRequestRoutes")
+const tutorRequestRoutes = require("./routes/tutorRequestRoutes");
+const studentRoutes = require("./routes/studentRoutes");
+
 const app = express();
 
 
@@ -41,12 +43,15 @@ app.use(express.json());
 
 
 // ----------------------------------
-// Store connected tutor sockets
+// Store Connected Tutor & Student Sockets
 // ----------------------------------
 
 const tutorSockets = new Map();
+const studentSockets = new Map();
+
 app.set("io", io);
 app.set("tutorSockets", tutorSockets);
+app.set("studentSockets", studentSockets);
 
 
 // ----------------------------------
@@ -55,10 +60,7 @@ app.set("tutorSockets", tutorSockets);
 
 io.on("connection", (socket) => {
 
-    console.log(
-        "User connected:",
-        socket.id
-    );
+    console.log("User connected:", socket.id);
 
 
     // -------------------------
@@ -80,6 +82,24 @@ io.on("connection", (socket) => {
 
 
     // -------------------------
+    // Register Student
+    // -------------------------
+
+    socket.on("registerStudent", (studentId) => {
+
+        studentSockets.set(
+            Number(studentId),
+            socket.id
+        );
+
+        console.log(
+            `Student ${studentId} registered with socket ${socket.id}`
+        );
+
+    });
+
+
+    // -------------------------
     // Disconnect
     // -------------------------
 
@@ -91,8 +111,7 @@ io.on("connection", (socket) => {
         );
 
 
-        // Remove tutor socket
-
+        // Remove disconnected tutor
         for (
             const [tutorId, socketId]
             of tutorSockets.entries()
@@ -104,6 +123,25 @@ io.on("connection", (socket) => {
 
                 console.log(
                     `Tutor ${tutorId} removed`
+                );
+
+            }
+
+        }
+
+
+        // Remove disconnected student
+        for (
+            const [studentId, socketId]
+            of studentSockets.entries()
+        ) {
+
+            if (socketId === socket.id) {
+
+                studentSockets.delete(studentId);
+
+                console.log(
+                    `Student ${studentId} removed`
                 );
 
             }
@@ -134,9 +172,7 @@ app.get("/", (req, res) => {
 
 app.get("/tutors", (req, res) => {
 
-    const sql =
-        "SELECT * FROM Tutor";
-
+    const sql = "SELECT * FROM Tutor";
 
     db.query(sql, (err, results) => {
 
@@ -149,7 +185,6 @@ app.get("/tutors", (req, res) => {
             });
 
         }
-
 
         res.json(results);
 
@@ -167,35 +202,42 @@ app.use(
     tutorRoutes
 );
 
-
 app.use(
     "/api/resume",
     resumeRoutes
 );
-
 
 app.use(
     "/api/availability",
     availabilityRoutes
 );
 
-
 app.use(
     "/api/requests",
     coachingRequestRoutes
 );
-
 
 app.use(
     "/api/matching",
     matchingRoutes
 );
 
-app.use("/api/bookings", bookingRoutes);
+app.use(
+    "/api/bookings",
+    bookingRoutes
+);
+
 app.use(
     "/api/tutor-requests",
     tutorRequestRoutes
 );
+
+app.use(
+    "/api/students",
+    studentRoutes
+);
+
+
 // ----------------------------------
 // Start Server
 // ----------------------------------

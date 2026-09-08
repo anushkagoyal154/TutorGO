@@ -1,245 +1,406 @@
 const express = require("express");
-const db = require("../db");
-
 const router = express.Router();
 
+const db = require("../db");
 
-// ==================================
-// ACCEPT TUTORING REQUEST
-// ==================================
 
-router.post("/:requestId/accept", (req, res) => {
+// =========================================
+// SELECT / REQUEST A TUTOR
+// =========================================
+
+router.post("/:requestId/select", (req, res) => {
 
     const requestId = req.params.requestId;
-    const { tutor_id } = req.body;
+
+    const {
+        student_id,
+        tutor_id,
+        slot_id
+    } = req.body;
 
 
-    if (!tutor_id) {
+    // -----------------------------------------
+    // Validate input
+    // -----------------------------------------
+
+    if (!student_id || !tutor_id || !slot_id) {
 
         return res.status(400).json({
-            error: "tutor_id is required"
+            error:
+                "student_id, tutor_id and slot_id are required"
         });
 
     }
 
 
-    // ----------------------------------
-    // Start Transaction
-    // ----------------------------------
+    // -----------------------------------------
+    // Check request
+    // -----------------------------------------
 
-    db.beginTransaction((err) => {
-
-        if (err) {
-
-            console.error(err);
-
-            return res.status(500).json({
-                error: "Could not start transaction"
-            });
-
-        }
-
-
-        // ----------------------------------
-        // Check Booking
-        // ----------------------------------
-
-        const bookingSQL = `
-            SELECT *
-            FROM Booking
-            WHERE request_id = ?
-            AND tutor_id = ?
-            AND booking_status = 'CONFIRMED'
-            FOR UPDATE
-        `;
+    const requestSQL = `
+        SELECT
+            cr.request_id,
+            cr.student_id,
+            cr.subject_id,
+            cr.topic,
+            cr.preferred_time,
+            cr.budget,
+            cr.mode,
+            s.subject_name
+        FROM Coaching_Request cr
+        JOIN Subject s
+            ON cr.subject_id = s.subject_id
+        WHERE cr.request_id = ?
+    `;
 
 
-        db.query(
-            bookingSQL,
-            [requestId, tutor_id],
-            (err, bookingResults) => {
+    db.query(
+        requestSQL,
+        [requestId],
+        (err, requestResults) => {
 
-                if (err) {
+            if (err) {
 
-                    return db.rollback(() => {
+                console.error(
+                    "REQUEST CHECK ERROR:",
+                    err
+                );
 
-                        console.error(err);
+                return res.status(500).json({
+                    error:
+                        "Failed to check coaching request"
+                });
 
-                        res.status(500).json({
-                            error: "Failed to find booking"
+            }
+
+
+            if (requestResults.length === 0) {
+
+                return res.status(404).json({
+                    error:
+                        "Coaching request not found"
+                });
+
+            }
+
+
+            const request = requestResults[0];
+
+
+            // -----------------------------------------
+            // Verify student owns request
+            // -----------------------------------------
+
+            if (
+                Number(request.student_id) !==
+                Number(student_id)
+            ) {
+
+                return res.status(403).json({
+                    error:
+                        "This request does not belong to this student"
+                });
+
+            }
+
+
+            // -----------------------------------------
+            // Check selected slot
+            // -----------------------------------------
+
+            const slotSQL = `
+                SELECT
+                    slot_id,
+                    tutor_id,
+                    start_time,
+                    end_time,
+                    status
+                FROM Availability_Slot
+                WHERE slot_id = ?
+                  AND tutor_id = ?
+            `;
+
+
+            db.query(
+                slotSQL,
+                [slot_id, tutor_id],
+                (slotErr, slotResults) => {
+
+                    if (slotErr) {
+
+                        console.error(
+                            "SLOT CHECK ERROR:",
+                            slotErr
+                        );
+
+                        return res.status(500).json({
+                            error:
+                                "Failed to check tutor slot"
                         });
 
-                    });
-
-                }
+                    }
 
 
-                if (bookingResults.length === 0) {
+                    if (slotResults.length === 0) {
 
-                    return db.rollback(() => {
-
-                        res.status(404).json({
-                            error: "Booking not found"
+                        return res.status(404).json({
+                            error:
+                                "Selected tutor slot not found"
                         });
 
-                    });
-
-                }
+                    }
 
 
-                // ----------------------------------
-                // Update Coaching Request
-                // ----------------------------------
-
-                const updateRequestSQL = `
-                    UPDATE Coaching_Request
-                    SET status = 'ACCEPTED'
-                    WHERE request_id = ?
-                `;
+                    const slot = slotResults[0];
 
 
-                db.query(
-                    updateRequestSQL,
-                    [requestId],
-                    (err) => {
+                    // -----------------------------------------
+                    // Check slot availability
+                    // -----------------------------------------
 
-                        if (err) {
+                    if (slot.status !== "AVAILABLE") {
 
-                            return db.rollback(() => {
+                        return res.status(409).json({
+                            error:
+                                "Selected tutor slot is no longer available"
+                        });
 
-                                console.error(err);
-
-                                res.status(500).json({
-                                    error: "Failed to accept request"
-                                });
-
-                            });
-
-                        }
+                    }
 
 
-                        // ----------------------------------
-                        // Commit Transaction
-                        // ----------------------------------
+                    // -----------------------------------------
+                    // Update request to PENDING
+                    // -----------------------------------------
 
-                        db.commit((err) => {
+                    const updateSQL = `
+                        UPDATE Coaching_Request
+                        SET status = 'PENDING'
+                        WHERE request_id = ?
+                    `;
 
-                            if (err) {
 
-                                return db.rollback(() => {
+                    db.query(
+                        updateSQL,
+                        [requestId],
+                        (updateErr) => {
 
-                                    console.error(err);
+                            if (updateErr) {
 
-                                    res.status(500).json({
-                                        error: "Failed to commit acceptance"
-                                    });
+                                console.error(
+                                    "REQUEST UPDATE ERROR:",
+                                    updateErr
+                                );
 
+                                return res.status(500).json({
+                                    error:
+                                        "Failed to update request"
                                 });
 
                             }
 
 
+                            // -----------------------------------------
+                            // Send request to tutor through Socket.IO
+                            // -----------------------------------------
+
+                            const io =
+                                req.app.get("io");
+
+                            const tutorSockets =
+                                req.app.get("tutorSockets");
+
+
+                            const tutorSocketId =
+                                tutorSockets
+                                    ? tutorSockets.get(
+                                        Number(tutor_id)
+                                    )
+                                    : null;
+
+
+                            if (
+                                io &&
+                                tutorSocketId
+                            ) {
+
+                                io.to(tutorSocketId).emit(
+                                    "newCoachingRequest",
+                                    {
+
+                                        request_id:
+                                            request.request_id,
+
+                                        student_id:
+                                            request.student_id,
+
+                                        subject_id:
+                                            request.subject_id,
+
+                                        subject_name:
+                                            request.subject_name,
+
+                                        topic:
+                                            request.topic,
+
+                                        preferred_time:
+                                            request.preferred_time,
+
+                                        budget:
+                                            request.budget,
+
+                                        mode:
+                                            request.mode,
+
+                                        tutor_id:
+                                            Number(tutor_id),
+
+                                        slot_id:
+                                            Number(slot_id),
+
+                                        start_time:
+                                            slot.start_time,
+
+                                        end_time:
+                                            slot.end_time
+
+                                    }
+                                );
+
+                            }
+
+
+                            // -----------------------------------------
+                            // Response
+                            // -----------------------------------------
+
                             res.json({
 
                                 message:
-                                    "Tutoring request accepted",
+                                    tutorSocketId
+                                        ? "Tutor request sent successfully"
+                                        : "Tutor selected. Tutor is currently offline.",
 
                                 request_id:
-                                    Number(requestId),
+                                    request.request_id,
+
+                                student_id:
+                                    request.student_id,
 
                                 tutor_id:
                                     Number(tutor_id),
 
-                                booking_id:
-                                    bookingResults[0].booking_id,
+                                slot_id:
+                                    Number(slot_id),
 
-                                booking_status:
-                                    "CONFIRMED",
+                                tutor_online:
+                                    Boolean(
+                                        tutorSocketId
+                                    ),
 
-                                request_status:
-                                    "ACCEPTED"
+                                status:
+                                    "PENDING"
 
                             });
 
-                        });
+                        }
+                    );
 
-                    }
+                }
+            );
 
-                );
-
-            }
-
-        );
-
-    });
+        }
+    );
 
 });
 
 
 
-// ==================================
-// REJECT TUTORING REQUEST
-// ==================================
+// =========================================
+// ACCEPT REQUEST
+// =========================================
 
-router.post("/:requestId/reject", (req, res) => {
+router.post("/:requestId/accept", (req, res) => {
 
     const requestId = req.params.requestId;
-    const { tutor_id } = req.body;
+
+    const {
+        tutor_id,
+        slot_id
+    } = req.body;
 
 
-    if (!tutor_id) {
+    // -----------------------------------------
+    // Validate input
+    // -----------------------------------------
+
+    if (!tutor_id || !slot_id) {
 
         return res.status(400).json({
-            error: "tutor_id is required"
+            error:
+                "tutor_id and slot_id are required"
         });
 
     }
 
 
-    // ----------------------------------
-    // Start Transaction
-    // ----------------------------------
+    // -----------------------------------------
+    // Start transaction
+    // -----------------------------------------
 
-    db.beginTransaction((err) => {
+    db.beginTransaction((transactionError) => {
 
-        if (err) {
+        if (transactionError) {
 
-            console.error(err);
+            console.error(
+                "TRANSACTION ERROR:",
+                transactionError
+            );
 
             return res.status(500).json({
-                error: "Could not start transaction"
+                error:
+                    "Failed to start booking transaction"
             });
 
         }
 
 
-        // ----------------------------------
-        // Find Booking
-        // ----------------------------------
+        // -----------------------------------------
+        // Get request and student
+        // -----------------------------------------
 
-        const bookingSQL = `
-            SELECT *
-            FROM Booking
+        const requestSQL = `
+            SELECT
+                request_id,
+                student_id,
+                subject_id,
+                topic,
+                preferred_time,
+                budget,
+                mode,
+                status
+            FROM Coaching_Request
             WHERE request_id = ?
-            AND tutor_id = ?
-            AND booking_status = 'CONFIRMED'
             FOR UPDATE
         `;
 
 
         db.query(
-            bookingSQL,
-            [requestId, tutor_id],
-            (err, bookingResults) => {
+            requestSQL,
+            [requestId],
+            (requestError, requestResults) => {
 
-                if (err) {
+                if (requestError) {
 
                     return db.rollback(() => {
 
-                        console.error(err);
+                        console.error(
+                            "REQUEST LOCK ERROR:",
+                            requestError
+                        );
 
                         res.status(500).json({
-                            error: "Failed to find booking"
+                            error:
+                                "Failed to fetch coaching request"
                         });
 
                     });
@@ -247,12 +408,17 @@ router.post("/:requestId/reject", (req, res) => {
                 }
 
 
-                if (bookingResults.length === 0) {
+                // -----------------------------------------
+                // Request not found
+                // -----------------------------------------
+
+                if (requestResults.length === 0) {
 
                     return db.rollback(() => {
 
                         res.status(404).json({
-                            error: "Booking not found"
+                            error:
+                                "Coaching request not found"
                         });
 
                     });
@@ -260,34 +426,64 @@ router.post("/:requestId/reject", (req, res) => {
                 }
 
 
-                const booking =
-                    bookingResults[0];
+                const request =
+                    requestResults[0];
+
+                const studentId =
+                    request.student_id;
 
 
-                // ----------------------------------
-                // Cancel Booking
-                // ----------------------------------
+                // -----------------------------------------
+                // Request must be PENDING
+                // -----------------------------------------
 
-                const cancelBookingSQL = `
-                    UPDATE Booking
-                    SET booking_status = 'CANCELLED'
-                    WHERE booking_id = ?
+                if (request.status !== "PENDING") {
+
+                    return db.rollback(() => {
+
+                        res.status(409).json({
+                            error:
+                                "Request is no longer pending"
+                        });
+
+                    });
+
+                }
+
+
+                // -----------------------------------------
+                // Lock the selected slot
+                // -----------------------------------------
+
+                const slotSQL = `
+                    SELECT
+                        slot_id,
+                        tutor_id,
+                        status
+                    FROM Availability_Slot
+                    WHERE slot_id = ?
+                      AND tutor_id = ?
+                    FOR UPDATE
                 `;
 
 
                 db.query(
-                    cancelBookingSQL,
-                    [booking.booking_id],
-                    (err) => {
+                    slotSQL,
+                    [slot_id, tutor_id],
+                    (slotError, slotResults) => {
 
-                        if (err) {
+                        if (slotError) {
 
                             return db.rollback(() => {
 
-                                console.error(err);
+                                console.error(
+                                    "SLOT LOCK ERROR:",
+                                    slotError
+                                );
 
                                 res.status(500).json({
-                                    error: "Failed to cancel booking"
+                                    error:
+                                        "Failed to lock tutor slot"
                                 });
 
                             });
@@ -295,31 +491,91 @@ router.post("/:requestId/reject", (req, res) => {
                         }
 
 
-                        // ----------------------------------
-                        // Make Slot Available Again
-                        // ----------------------------------
+                        // -----------------------------------------
+                        // Slot not found
+                        // -----------------------------------------
 
-                        const updateSlotSQL = `
-                            UPDATE Availability_Slot
-                            SET status = 'AVAILABLE'
-                            WHERE slot_id = ?
+                        if (slotResults.length === 0) {
+
+                            return db.rollback(() => {
+
+                                res.status(404).json({
+                                    error:
+                                        "Tutor slot not found"
+                                });
+
+                            });
+
+                        }
+
+
+                        // -----------------------------------------
+                        // Check slot availability
+                        // -----------------------------------------
+
+                        if (
+                            slotResults[0].status !==
+                            "AVAILABLE"
+                        ) {
+
+                            return db.rollback(() => {
+
+                                res.status(409).json({
+                                    error:
+                                        "Tutor slot is no longer available"
+                                });
+
+                            });
+
+                        }
+
+
+                        // -----------------------------------------
+                        // Create Booking
+                        // -----------------------------------------
+
+                        const bookingSQL = `
+                            INSERT INTO Booking
+                            (
+                                request_id,
+                                student_id,
+                                tutor_id,
+                                slot_id,
+                                booking_status
+                            )
+                            SELECT
+                                request_id,
+                                student_id,
+                                ?,
+                                ?,
+                                'CONFIRMED'
+                            FROM Coaching_Request
+                            WHERE request_id = ?
+                              AND status = 'PENDING'
                         `;
 
 
                         db.query(
-                            updateSlotSQL,
-                            [booking.slot_id],
-                            (err) => {
+                            bookingSQL,
+                            [
+                                tutor_id,
+                                slot_id,
+                                requestId
+                            ],
+                            (bookingError, bookingResult) => {
 
-                                if (err) {
+                                if (bookingError) {
 
                                     return db.rollback(() => {
 
-                                        console.error(err);
+                                        console.error(
+                                            "BOOKING INSERT ERROR:",
+                                            bookingError
+                                        );
 
                                         res.status(500).json({
                                             error:
-                                                "Failed to release slot"
+                                                "Failed to create booking"
                                         });
 
                                     });
@@ -327,31 +583,61 @@ router.post("/:requestId/reject", (req, res) => {
                                 }
 
 
-                                // ----------------------------------
-                                // Update Request
-                                // ----------------------------------
+                                // -----------------------------------------
+                                // Booking not created
+                                // -----------------------------------------
 
-                                const updateRequestSQL = `
-                                    UPDATE Coaching_Request
-                                    SET status = 'REJECTED'
-                                    WHERE request_id = ?
+                                if (
+                                    bookingResult.affectedRows ===
+                                    0
+                                ) {
+
+                                    return db.rollback(() => {
+
+                                        res.status(409).json({
+                                            error:
+                                                "Request is no longer pending"
+                                        });
+
+                                    });
+
+                                }
+
+
+                                const bookingId =
+                                    bookingResult.insertId;
+
+
+                                // -----------------------------------------
+                                // Mark slot as BOOKED
+                                // -----------------------------------------
+
+                                const updateSlotSQL = `
+                                    UPDATE Availability_Slot
+                                    SET status = 'BOOKED'
+                                    WHERE slot_id = ?
+                                      AND tutor_id = ?
+                                      AND status = 'AVAILABLE'
                                 `;
 
 
                                 db.query(
-                                    updateRequestSQL,
-                                    [requestId],
-                                    (err) => {
+                                    updateSlotSQL,
+                                    [slot_id, tutor_id],
+                                    (updateSlotError) => {
 
-                                        if (err) {
+                                        if (updateSlotError) {
 
                                             return db.rollback(() => {
 
-                                                console.error(err);
+                                                console.error(
+                                                    "SLOT UPDATE ERROR:",
+                                                    updateSlotError
+                                                );
 
                                                 res.status(500).json({
                                                     error:
-                                                        "Failed to reject request"
+                                                        "Failed to update tutor slot"
                                                 });
 
                                             });
@@ -359,74 +645,442 @@ router.post("/:requestId/reject", (req, res) => {
                                         }
 
 
-                                        // ----------------------------------
-                                        // Commit
-                                        // ----------------------------------
+                                        // -----------------------------------------
+                                        // Update request to ACCEPTED
+                                        // -----------------------------------------
 
-                                        db.commit((err) => {
+                                        const updateRequestSQL = `
+                                            UPDATE Coaching_Request
+                                            SET status = 'ACCEPTED'
+                                            WHERE request_id = ?
+                                        `;
 
-                                            if (err) {
 
-                                                return db.rollback(() => {
+                                        db.query(
+                                            updateRequestSQL,
+                                            [requestId],
+                                            (updateRequestError) => {
 
-                                                    console.error(err);
+                                                if (
+                                                    updateRequestError
+                                                ) {
 
-                                                    res.status(500).json({
-                                                        error:
-                                                            "Failed to commit rejection"
+                                                    return db.rollback(() => {
+
+                                                        console.error(
+                                                            "REQUEST STATUS ERROR:",
+                                                            updateRequestError
+                                                        );
+
+                                                        res.status(500).json({
+                                                            error:
+                                                                "Failed to update request status"
+                                                        });
+
                                                     });
 
-                                                });
+                                                }
+
+
+                                                // -----------------------------------------
+                                                // COMMIT TRANSACTION
+                                                // -----------------------------------------
+
+                                                db.commit(
+                                                    (commitError) => {
+
+                                                        if (
+                                                            commitError
+                                                        ) {
+
+                                                            return db.rollback(() => {
+
+                                                                console.error(
+                                                                    "COMMIT ERROR:",
+                                                                    commitError
+                                                                );
+
+                                                                res.status(500).json({
+                                                                    error:
+                                                                        "Failed to confirm booking"
+                                                                });
+
+                                                            });
+
+                                                        }
+
+
+                                                        // -----------------------------------------
+                                                        // SEND ACCEPTED RESULT TO STUDENT
+                                                        // -----------------------------------------
+
+                                                        const io =
+                                                            req.app.get("io");
+
+                                                        const studentSockets =
+                                                            req.app.get(
+                                                                "studentSockets"
+                                                            );
+
+
+                                                        const studentSocketId =
+                                                            studentSockets
+                                                                ? studentSockets.get(
+                                                                    Number(studentId)
+                                                                )
+                                                                : null;
+
+
+                                                        if (
+                                                            io &&
+                                                            studentSocketId
+                                                        ) {
+
+                                                            io.to(
+                                                                studentSocketId
+                                                            ).emit(
+                                                                "requestStatusUpdated",
+                                                                {
+
+                                                                    request_id:
+                                                                        Number(
+                                                                            requestId
+                                                                        ),
+
+                                                                    status:
+                                                                        "ACCEPTED",
+
+                                                                    message:
+                                                                        "Your tutor request has been accepted. Booking confirmed.",
+
+                                                                    tutor_id:
+                                                                        Number(
+                                                                            tutor_id
+                                                                        ),
+
+                                                                    booking_id:
+                                                                        bookingId
+
+                                                                }
+                                                            );
+
+
+                                                            console.log(
+                                                                `Acceptance notification sent to student ${studentId}`
+                                                            );
+
+                                                        } else {
+
+                                                            console.log(
+                                                                `Student ${studentId} is not connected`
+                                                            );
+
+                                                        }
+
+
+                                                        // -----------------------------------------
+                                                        // Response to Tutor
+                                                        // -----------------------------------------
+
+                                                        res.json({
+
+                                                            message:
+                                                                "Request accepted and booking confirmed",
+
+                                                            request_id:
+                                                                Number(
+                                                                    requestId
+                                                                ),
+
+                                                            student_id:
+                                                                Number(
+                                                                    studentId
+                                                                ),
+
+                                                            tutor_id:
+                                                                Number(
+                                                                    tutor_id
+                                                                ),
+
+                                                            slot_id:
+                                                                Number(
+                                                                    slot_id
+                                                                ),
+
+                                                            booking_id:
+                                                                bookingId,
+
+                                                            request_status:
+                                                                "ACCEPTED",
+
+                                                            booking_status:
+                                                                "CONFIRMED",
+
+                                                            slot_status:
+                                                                "BOOKED"
+
+                                                        });
+
+                                                    }
+                                                );
 
                                             }
-
-
-                                            res.json({
-
-                                                message:
-                                                    "Tutoring request rejected",
-
-                                                request_id:
-                                                    Number(requestId),
-
-                                                tutor_id:
-                                                    Number(tutor_id),
-
-                                                booking_id:
-                                                    booking.booking_id,
-
-                                                booking_status:
-                                                    "CANCELLED",
-
-                                                slot_status:
-                                                    "AVAILABLE",
-
-                                                request_status:
-                                                    "REJECTED"
-
-                                            });
-
-                                        });
+                                        );
 
                                     }
-
                                 );
 
                             }
-
                         );
 
                     }
-
                 );
 
             }
-
         );
 
     });
 
 });
+
+
+
+// =========================================
+// REJECT REQUEST
+// =========================================
+
+router.post("/:requestId/reject", (req, res) => {
+
+    const requestId = req.params.requestId;
+
+    const {
+        tutor_id
+    } = req.body;
+
+
+    // -----------------------------------------
+    // Validate input
+    // -----------------------------------------
+
+    if (!tutor_id) {
+
+        return res.status(400).json({
+            error:
+                "tutor_id is required"
+        });
+
+    }
+
+
+    // -----------------------------------------
+    // First get student ID
+    // -----------------------------------------
+
+    const requestSQL = `
+        SELECT
+            request_id,
+            student_id,
+            status
+        FROM Coaching_Request
+        WHERE request_id = ?
+    `;
+
+
+    db.query(
+        requestSQL,
+        [requestId],
+        (requestError, requestResults) => {
+
+            if (requestError) {
+
+                console.error(
+                    "REJECT REQUEST CHECK ERROR:",
+                    requestError
+                );
+
+                return res.status(500).json({
+                    error:
+                        "Failed to check request"
+                });
+
+            }
+
+
+            if (requestResults.length === 0) {
+
+                return res.status(404).json({
+                    error:
+                        "Request not found"
+                });
+
+            }
+
+
+            const request =
+                requestResults[0];
+
+            const studentId =
+                request.student_id;
+
+
+            // -----------------------------------------
+            // Make sure request is still pending
+            // -----------------------------------------
+
+            if (request.status !== "PENDING") {
+
+                return res.status(409).json({
+                    error:
+                        "Request is no longer pending"
+                });
+
+            }
+
+
+            // -----------------------------------------
+            // Update request
+            // -----------------------------------------
+
+            const sql = `
+                UPDATE Coaching_Request
+                SET status = 'REJECTED'
+                WHERE request_id = ?
+                  AND status = 'PENDING'
+            `;
+
+
+            db.query(
+                sql,
+                [requestId],
+                (err, result) => {
+
+                    if (err) {
+
+                        console.error(
+                            "REJECT REQUEST ERROR:",
+                            err
+                        );
+
+                        return res.status(500).json({
+                            error:
+                                "Failed to reject request"
+                        });
+
+                    }
+
+
+                    if (result.affectedRows === 0) {
+
+                        return res.status(409).json({
+                            error:
+                                "Request is no longer pending"
+                        });
+
+                    }
+
+
+                    // -----------------------------------------
+                    // Send REJECTED result to student
+                    // -----------------------------------------
+
+                    const io =
+                        req.app.get("io");
+
+                    const studentSockets =
+                        req.app.get(
+                            "studentSockets"
+                        );
+
+
+                    const studentSocketId =
+                        studentSockets
+                            ? studentSockets.get(
+                                Number(studentId)
+                            )
+                            : null;
+
+
+                    if (
+                        io &&
+                        studentSocketId
+                    ) {
+
+                        io.to(
+                            studentSocketId
+                        ).emit(
+                            "requestStatusUpdated",
+                            {
+
+                                request_id:
+                                    Number(
+                                        requestId
+                                    ),
+
+                                status:
+                                    "REJECTED",
+
+                                message:
+                                    "Your tutor request has been rejected.",
+
+                                tutor_id:
+                                    Number(
+                                        tutor_id
+                                    )
+
+                            }
+                        );
+
+
+                        console.log(
+                            `Rejection notification sent to student ${studentId}`
+                        );
+
+                    } else {
+
+                        console.log(
+                            `Student ${studentId} is not connected`
+                        );
+
+                    }
+
+
+                    // -----------------------------------------
+                    // Response
+                    // -----------------------------------------
+
+                    res.json({
+
+                        message:
+                            "Tutor request rejected",
+
+                        request_id:
+                            Number(
+                                requestId
+                            ),
+
+                        student_id:
+                            Number(
+                                studentId
+                            ),
+
+                        tutor_id:
+                            Number(
+                                tutor_id
+                            ),
+
+                        status:
+                            "REJECTED"
+
+                    });
+
+                }
+            );
+
+        }
+    );
+
+});
+
 
 
 module.exports = router;
