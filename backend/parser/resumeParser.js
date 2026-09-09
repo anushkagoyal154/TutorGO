@@ -1,5 +1,4 @@
 function parseResume(text) {
-
     const result = {
         name: null,
         qualification: null,
@@ -7,136 +6,78 @@ function parseResume(text) {
         subjects: [],
         expertise: {}
     };
-
-
-    // -------------------------
+    
     // Clean Resume Text
-    // -------------------------
-
     const lines = text
         .split("\n")
         .map(line => line.trim())
         .filter(line => line.length > 0);
-
-
-    // -------------------------
-    // Extract Name
-    // -------------------------
-
+    
+        // Extract Name
     if (lines.length > 0) {
         result.name = lines[0];
     }
-
-
-    // -------------------------
+    
     // Extract Qualification
-    // -------------------------
-
     const qualificationMatch = text.match(
         /(M\.Tech|B\.Tech|MCA|BCA|MBA|PhD|Ph\.D)[^\n]*/i
     );
-
     if (qualificationMatch) {
         result.qualification =
             qualificationMatch[0].trim();
     }
 
-
-    // -------------------------
     // Extract Experience
-    // -------------------------
-
     const experienceMatch = text.match(
         /(\d+)\s*(years?|yrs?)\s*(of)?\s*(teaching\s*)?experience/i
     );
-
     if (experienceMatch) {
         result.experience =
             parseInt(experienceMatch[1]);
     }
 
-
-    // -------------------------
     // Subject Mapping
-    // -------------------------
-
     const subjectMap = {
-
         "database management systems": "DBMS",
-
         "dbms": "DBMS",
-
         "operating systems": "Operating Systems",
-
         "computer networks": "Computer Networks",
-
         "data structures": "Data Structures",
-
         "c++ programming": "C++",
-
         "c++": "C++",
-
         "java": "Java",
-
         "python": "Python"
-
     };
 
-
-    // -------------------------
     // Detect Subjects
-    // -------------------------
-
     const lowerText =
         text.toLowerCase();
 
     const detectedSubjects =
         new Set();
-
-
     for (const keyword in subjectMap) {
-
         if (lowerText.includes(keyword)) {
 
             detectedSubjects.add(
                 subjectMap[keyword]
             );
-
         }
-
     }
-
-
     result.subjects =
         Array.from(detectedSubjects);
-
-
-    // -------------------------
-    // Get Subjects & Expertise
-    // -------------------------
-
     const startIndex =
         lowerText.indexOf("subjects & expertise");
-
     const endIndex =
         lowerText.indexOf("teaching preferences");
-
-
     let expertiseText = text;
-
-
     if (startIndex !== -1) {
-
         if (endIndex !== -1) {
-
             expertiseText =
                 text.substring(
                     startIndex,
                     endIndex
                 );
-
         } else {
-
             expertiseText =
                 text.substring(startIndex);
 
@@ -149,9 +90,7 @@ function parseResume(text) {
         expertiseText.toLowerCase();
 
 
-    // -------------------------
     // Subject Aliases
-    // -------------------------
 
     const subjectAliases = {
 
@@ -189,9 +128,7 @@ function parseResume(text) {
     };
 
 
-    // -------------------------
     // Expertise Levels
-    // -------------------------
 
     const expertiseLevels = [
         "Advanced",
@@ -200,9 +137,7 @@ function parseResume(text) {
     ];
 
 
-    // -------------------------
     // Find Expertise
-    // -------------------------
 
     for (const subject of result.subjects) {
 
@@ -282,9 +217,7 @@ function parseResume(text) {
     }
 
 
-    // -------------------------
     // Default Missing Expertise
-    // -------------------------
 
     for (const subject of result.subjects) {
 
@@ -298,9 +231,7 @@ function parseResume(text) {
     }
 
 
-    // -------------------------
     // Return Result
-    // -------------------------
 
     return result;
 }

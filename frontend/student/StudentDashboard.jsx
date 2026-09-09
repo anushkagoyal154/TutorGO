@@ -1232,22 +1232,11 @@ function StudentDashboard({ profile }) {
 
                                 )
                             )}
-
-
                         </div>
-
                     )}
-
                 </div>
-
             )}
-
-
         </div>
-
     );
-
 }
-
-
 export default StudentDashboard;
