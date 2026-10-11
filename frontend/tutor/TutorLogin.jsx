@@ -338,7 +338,6 @@ function TutorLogin({
                     <span>
                         🔐
                     </span>
-
                     <p>
                         Use the email and password
                         registered with TutorGo.
