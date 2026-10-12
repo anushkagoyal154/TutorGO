@@ -259,6 +259,7 @@ router.post("/mock", async (req, res) => {
         // 10. Generate meeting link
         // -----------------------------------------
 
+        // Keep an existing booking link; use a demo link only when it's missing.
         const meetingLink =
             booking.meeting_link ||
             `https://meet.google.com/demo-tutorgo-${booking_id}`;
