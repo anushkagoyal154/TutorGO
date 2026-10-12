@@ -1,23 +1,9 @@
 const express = require("express");
 const db = require("../db");
-
 const router = express.Router();
-
-
-// ----------------------------------
-// Match Tutors for a Request
-// ----------------------------------
-
 router.get("/:requestId", (req, res) => {
-
-    const requestId = req.params.requestId;
-
-
-    // ----------------------------------
-    // Get Student Request
-    // ----------------------------------
-
-    const requestSQL = `
+const requestId = req.params.requestId;
+const requestSQL = `
         SELECT 
             cr.request_id, 
             cr.student_id, 
@@ -32,9 +18,7 @@ router.get("/:requestId", (req, res) => {
             ON cr.subject_id = s.subject_id
         WHERE cr.request_id = ?
     `;
-
-
-    db.query(
+db.query(
         requestSQL,
         [requestId],
         (err, requestResults) => {
@@ -59,14 +43,8 @@ router.get("/:requestId", (req, res) => {
             }
 
 
-            const request = requestResults[0];
-
-
-            // ----------------------------------
-            // Find Matching Tutors
-            // ----------------------------------
-
-            const tutorSQL = `
+const request = requestResults[0];
+ const tutorSQL = `
                 SELECT DISTINCT
 
                     t.tutor_id,
