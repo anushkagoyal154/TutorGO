@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-
 function StudentLogin({ onRegister, onLogin }) {
 
     const [email, setEmail] = useState("");
@@ -8,7 +7,6 @@ function StudentLogin({ onRegister, onLogin }) {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-
 
     const handleSubmit = async (e) => {
 

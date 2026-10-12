@@ -5,7 +5,6 @@ const bcrypt = require("bcryptjs");
 
 const db = require("../db");
 
-
 // =====================================================
 // CREATE TUTOR
 // POST /api/tutors

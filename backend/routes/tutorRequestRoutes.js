@@ -5,7 +5,6 @@ const db = require("../db");
 
 // Use promise-based database pool
 const promiseDb = db.promise();
-
 // =====================================================
 // SELECT TUTOR
 // POST /api/tutor-requests/:requestId/select

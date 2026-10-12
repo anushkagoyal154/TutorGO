@@ -334,5 +334,4 @@ router.put("/:studentId", (req, res) => {
 
 });
 
-
 module.exports = router;
