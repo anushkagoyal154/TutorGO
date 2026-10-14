@@ -13,9 +13,7 @@ router.post("/mock", async (req, res) => {
         payment_reference
     } = req.body;
 
-    // -----------------------------------------
-    // 1. Validate request
-    // -----------------------------------------
+
 
     if (
         !booking_id ||
