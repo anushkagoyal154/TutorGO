@@ -1,11 +1,6 @@
 
 const mysql = require("mysql2");
 require("dotenv").config();
-
-// -----------------------------------------
-// Database Configuration
-// -----------------------------------------
-
 const dbConfig = {
     host: process.env.DB_HOST || "localhost",
     user: process.env.DB_USER || "root",
