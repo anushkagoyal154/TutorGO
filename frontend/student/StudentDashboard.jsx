@@ -16,13 +16,6 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // FORM STATES
-
-    // =========================================
-
-
 
     const [subjectId, setSubjectId] = useState("");
 
