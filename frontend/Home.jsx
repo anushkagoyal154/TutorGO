@@ -12,7 +12,7 @@ import TutorRegister from "./tutor/TutorRegister";
 import {
     ForgotPasswordPage,
     VerifyEmailPage,
-    ResetPasswordPage
+    ResetPasswordPage,
 } from "./EmailActionPages";
 
 import "./App.css";
@@ -62,6 +62,9 @@ function Home() {
 
         localStorage.setItem("tutorgo_role", selectedRole);
         localStorage.setItem("tutorgo_profile", JSON.stringify(data));
+
+        // The login components save the JWT token as:
+        // localStorage.setItem("tutorgo_token", data.token)
     };
 
     // =================================================
@@ -75,11 +78,20 @@ function Home() {
 
         localStorage.removeItem("tutorgo_role");
         localStorage.removeItem("tutorgo_profile");
+        localStorage.removeItem("tutorgo_token");
+    };
+
+    // =================================================
+    // RETURN TO LOGIN AFTER REGISTRATION
+    // =================================================
+
+    const returnToLogin = () => {
+        setScreen("login");
     };
 
     // =================================================
     // EMAIL VERIFICATION LINK
-    // /verify-email?role=student&token=...
+    // Example: /verify-email?role=student&token=...
     // =================================================
 
     const currentPath = window.location.pathname;
@@ -90,7 +102,7 @@ function Home() {
 
     // =================================================
     // PASSWORD RESET LINK
-    // /reset-password?role=student&token=...
+    // Example: /reset-password?role=student&token=...
     // =================================================
 
     if (currentPath === "/reset-password") {
@@ -112,7 +124,7 @@ function Home() {
         return (
             <ForgotPasswordPage
                 initialRole={role === "tutor" ? "tutor" : "student"}
-                onBack={() => setScreen("login")}
+                onBack={returnToLogin}
             />
         );
     }
@@ -146,12 +158,8 @@ function Home() {
         if (screen === "register") {
             return (
                 <StudentRegister
-                    onBack={() => setScreen("login")}
-                    onComplete={() => {
-                        // Registration must not automatically log in.
-                        // The student should verify their email first.
-                        setScreen("login");
-                    }}
+                    onBack={returnToLogin}
+                    onComplete={returnToLogin}
                 />
             );
         }
@@ -195,12 +203,9 @@ function Home() {
         if (screen === "register") {
             return (
                 <TutorRegister
-                    onBack={() => setScreen("login")}
-                    onLogin={() => setScreen("login")}
-                    onComplete={() => {
-                        // Do not automatically log in before verification.
-                        setScreen("login");
-                    }}
+                    onBack={returnToLogin}
+                    onLogin={returnToLogin}
+                    onComplete={returnToLogin}
                 />
             );
         }
@@ -266,6 +271,7 @@ function Home() {
                                 event.key === "Enter" ||
                                 event.key === " "
                             ) {
+                                event.preventDefault();
                                 setRole("student");
                                 setScreen("login");
                                 setProfile(null);
@@ -298,6 +304,7 @@ function Home() {
                                 event.key === "Enter" ||
                                 event.key === " "
                             ) {
+                                event.preventDefault();
                                 setRole("tutor");
                                 setScreen("login");
                                 setProfile(null);

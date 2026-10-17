@@ -1,4 +1,7 @@
+
 import { useState } from "react";
+
+const API_URL = "http://localhost:5000";
 
 function StudentLogin({ onRegister, onLogin, onForgotPassword }) {
     const [email, setEmail] = useState("");
@@ -26,20 +29,20 @@ function StudentLogin({ onRegister, onLogin, onForgotPassword }) {
 
         try {
             const response = await fetch(
-    "http://localhost:5000/api/students/login",
-    {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            email: cleanEmail,
-            password
-        })
-    }
-);
+                `${API_URL}/api/students/login`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        email: cleanEmail,
+                        password
+                    })
+                }
+            );
 
-            const data = await response.json();
+            const data = await response.json().catch(() => ({}));
 
             if (!response.ok) {
                 throw new Error(
@@ -50,6 +53,13 @@ function StudentLogin({ onRegister, onLogin, onForgotPassword }) {
             if (!data.student) {
                 throw new Error("Student profile was not returned.");
             }
+
+            if (!data.token) {
+                throw new Error("Login succeeded without an authentication token.");
+            }
+
+            // Store the JWT for authenticated API requests.
+            localStorage.setItem("tutorgo_token", data.token);
 
             onLogin(data.student);
         } catch (err) {
@@ -94,10 +104,12 @@ function StudentLogin({ onRegister, onLogin, onForgotPassword }) {
                         required
                     />
 
-                    <div style={{
-                        textAlign: "right",
-                        margin: "8px 0 16px"
-                    }}>
+                    <div
+                        style={{
+                            textAlign: "right",
+                            margin: "8px 0 16px"
+                        }}
+                    >
                         <button
                             type="button"
                             className="link-button"
@@ -106,7 +118,7 @@ function StudentLogin({ onRegister, onLogin, onForgotPassword }) {
                                     onForgotPassword();
                                 } else {
                                     setError(
-                                        "Forgot Password navigation is not configured yet."
+                                        "Forgot password navigation is not configured."
                                     );
                                 }
                             }}
@@ -135,7 +147,7 @@ function StudentLogin({ onRegister, onLogin, onForgotPassword }) {
                 </div>
 
                 <p className="switch-auth">
-                    Don't have an account?
+                    Don't have an account?{" "}
                     <button
                         type="button"
                         onClick={onRegister}
@@ -148,6 +160,5 @@ function StudentLogin({ onRegister, onLogin, onForgotPassword }) {
         </div>
     );
 }
-
 
 export default StudentLogin;
