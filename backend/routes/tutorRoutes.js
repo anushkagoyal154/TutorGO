@@ -1,803 +1,544 @@
+
 const express = require("express");
 const router = express.Router();
 
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-
+const jwt = require("jsonwebtoken");
 const db = require("../db");
 
 
-// =====================================================
-// CREATE TUTOR
+const {
+    normalizeEmail,
+    isValidEmail
+} = require("../services/emailAuthService");
+
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
+
+// =========================================
+// CREATE TUTOR ACCOUNT
+// =========================================
+
 // POST /api/tutors
-// =====================================================
+// Requires a verified registration token
+// =========================================
 
 router.post("/", async (req, res) => {
+    const name =
+        typeof req.body.name === "string"
+            ? req.body.name.trim()
+            : "";
 
-    const {
-        name,
-        email,
-        password,
-        qualification,
-        experience,
-        price_per_session,
-        location
-    } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const password = req.body.password;
 
+    const qualification =
+        typeof req.body.qualification === "string"
+            ? req.body.qualification.trim()
+            : "";
 
-    // -----------------------------------------
-    // VALIDATION
-    // -----------------------------------------
+    const experience = Number(req.body.experience);
+    const price = Number(req.body.price_per_session);
+
+    const location =
+        typeof req.body.location === "string"
+            ? req.body.location.trim()
+            : "";
+
+    const verificationToken =
+        typeof req.body.verificationToken === "string"
+            ? req.body.verificationToken.trim()
+            : "";
 
     if (
         !name ||
-        !email ||
-        !password ||
+        !isValidEmail(email) ||
         !qualification ||
-        experience === undefined ||
-        price_per_session === undefined ||
+        req.body.experience === undefined ||
+        req.body.price_per_session === undefined ||
         !location
     ) {
-
         return res.status(400).json({
-            error:
-                "Name, email, password, qualification, experience, price and location are required"
+            success: false,
+            error: "Name, valid email, qualification, experience, price and location are required."
         });
-
     }
-
-
-    if (password.trim().length < 6) {
-
-        return res.status(400).json({
-            error:
-                "Password must be at least 6 characters long"
-        });
-
-    }
-
 
     if (
-        !Number.isFinite(Number(experience)) ||
-        Number(experience) < 0
+        typeof password !== "string" ||
+        password.length < PASSWORD_MIN_LENGTH ||
+        password.length > PASSWORD_MAX_LENGTH
     ) {
-
         return res.status(400).json({
-            error:
-                "Experience must be a valid non-negative number"
+            success: false,
+            error: "Password must be between 8 and 128 characters."
         });
-
     }
-
 
     if (
-        !Number.isFinite(Number(price_per_session)) ||
-        Number(price_per_session) < 0
+        !Number.isFinite(experience) ||
+        experience < 0 ||
+        !Number.isFinite(price) ||
+        price < 0
     ) {
-
         return res.status(400).json({
-            error:
-                "Price must be a valid non-negative number"
+            success: false,
+            error: "Experience and price must be valid non-negative numbers."
         });
-
     }
 
+    if (!/^[a-f0-9]{64}$/i.test(verificationToken)) {
+        return res.status(400).json({
+            success: false,
+            error: "A valid email verification token is required."
+        });
+    }
+
+    let connection;
 
     try {
+        connection = await db.promise().getConnection();
+        await connection.beginTransaction();
 
-        // -----------------------------------------
-        // HASH PASSWORD
-        // -----------------------------------------
+        const tokenHash = crypto
+            .createHash("sha256")
+            .update(verificationToken)
+            .digest("hex");
 
-        const hashedPassword = await bcrypt.hash(
-            password.trim(),
-            10
+        const [verificationRows] = await connection.query(
+            `SELECT otp_id
+             FROM AuthOTP
+             WHERE email = ?
+               AND role = 'tutor'
+               AND purpose = 'registration'
+               AND verification_token_hash = ?
+               AND verified_at IS NOT NULL
+               AND expires_at > NOW()
+             LIMIT 1
+             FOR UPDATE`,
+            [email, tokenHash]
         );
 
+        if (!verificationRows.length) {
+            await connection.rollback();
 
-        // -----------------------------------------
-        // INSERT TUTOR
-        // -----------------------------------------
+            return res.status(400).json({
+                success: false,
+                error: "Verification token is invalid, expired, or already used. Verify your email again."
+            });
+        }
 
-        const sql = `
-            INSERT INTO Tutor
-            (
+        const passwordHash = await bcrypt.hash(password, 12);
+
+        const [result] = await connection.query(
+            `INSERT INTO Tutor
+                (
+                    name,
+                    email,
+                    password,
+                    email_verified,
+                    qualification,
+                    experience,
+                    price_per_session,
+                    rating,
+                    location
+                )
+             VALUES (?, ?, ?, 1, ?, ?, ?, 0, ?)`,
+            [
                 name,
                 email,
-                password,
+                passwordHash,
                 qualification,
                 experience,
-                price_per_session,
-                rating,
+                price,
                 location
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-
-        const values = [
-            name.trim(),
-            email.trim(),
-            hashedPassword,
-            qualification.trim(),
-            Number(experience),
-            Number(price_per_session),
-            0,
-            location.trim()
-        ];
-
-
-        db.query(
-            sql,
-            values,
-            (err, result) => {
-
-                if (err) {
-
-                    console.error(
-                        "TUTOR CREATE ERROR:",
-                        err
-                    );
-
-
-                    if (err.code === "ER_DUP_ENTRY") {
-
-                        return res.status(409).json({
-                            error:
-                                "A tutor with this email already exists"
-                        });
-
-                    }
-
-
-                    return res.status(500).json({
-                        error:
-                            "Failed to create tutor",
-                        details:
-                            err.message
-                    });
-
-                }
-
-
-                return res.status(201).json({
-
-                    success: true,
-
-                    message:
-                        "Tutor created successfully",
-
-                    tutor_id:
-                        result.insertId
-
-                });
-
-            }
+            ]
         );
 
+        await connection.query(
+            "DELETE FROM AuthOTP WHERE otp_id = ?",
+            [verificationRows[0].otp_id]
+        );
+
+        await connection.commit();
+
+        return res.status(201).json({
+            success: true,
+            message: "Tutor account created successfully.",
+            tutor_id: result.insertId
+        });
     } catch (error) {
+        if (connection) {
+            await connection.rollback();
+        }
 
-        console.error(
-            "PASSWORD HASH ERROR:",
-            error
-        );
+        if (error.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({
+                success: false,
+                error: "An account with this email already exists."
+            });
+        }
 
+        console.error("TUTOR REGISTRATION ERROR:", error);
 
         return res.status(500).json({
-            error:
-                "Failed to create tutor"
+            success: false,
+            error: "Failed to create tutor account."
         });
-
+    } finally {
+        if (connection) {
+            connection.release();
+        }
     }
-
 });
 
-
-// =====================================================
+// =========================================
 // TUTOR LOGIN
 // POST /api/tutors/login
-// =====================================================
+// =========================================
 
 router.post("/login", async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const password = req.body.password;
 
-    const {
-        email,
-        password
-    } = req.body;
-
-
-    // -----------------------------------------
-    // VALIDATE INPUT
-    // -----------------------------------------
-
-    if (!email || !password) {
-
+    if (
+        !isValidEmail(email) ||
+        typeof password !== "string" ||
+        !password
+    ) {
         return res.status(400).json({
-            error:
-                "Email and password are required"
+            success: false,
+            error: "Enter a valid email and password."
         });
-
     }
 
+    if (!process.env.JWT_SECRET) {
+        console.error("JWT_SECRET is not configured.");
+
+        return res.status(500).json({
+            success: false,
+            error: "Authentication is not configured."
+        });
+    }
 
     try {
-
-        // -----------------------------------------
-        // FIND TUTOR BY EMAIL
-        // -----------------------------------------
-
-        const sql = `
-            SELECT
+        const [rows] = await db.promise().query(
+            `SELECT
                 tutor_id,
                 name,
                 email,
                 password,
+                email_verified,
                 qualification,
                 experience,
                 price_per_session,
                 rating,
                 location,
                 resume_path
-            FROM Tutor
-            WHERE email = ?
-        `;
+             FROM Tutor
+             WHERE LOWER(email) = ?
+             LIMIT 1`,
+            [email]
+        );
 
+        if (!rows.length) {
+            return res.status(401).json({
+                success: false,
+                error: "Invalid email or password."
+            });
+        }
 
-        db.query(
-            sql,
-            [email.trim()],
-            async (err, results) => {
+        const tutor = rows[0];
 
-                if (err) {
+        if (Number(tutor.email_verified) !== 1) {
+            return res.status(403).json({
+                success: false,
+                error: "Please verify your email before logging in."
+            });
+        }
 
-                    console.error(
-                        "TUTOR LOGIN DATABASE ERROR:",
-                        err
-                    );
+        if (
+            !tutor.password ||
+            !(await bcrypt.compare(password, tutor.password))
+        ) {
+            return res.status(401).json({
+                success: false,
+                error: "Invalid email or password."
+            });
+        }
 
-                    return res.status(500).json({
-                        error:
-                            "Failed to login tutor"
-                    });
+        const [expertiseRows] = await db.promise().query(
+            `SELECT
+                s.subject_id,
+                s.subject_name,
+                s.topic,
+                te.expertise_level
+             FROM Tutor_Expertise te
+             JOIN Subject s ON te.subject_id = s.subject_id
+             WHERE te.tutor_id = ?
+             ORDER BY s.subject_name`,
+            [tutor.tutor_id]
+        );
 
-                }
+        const subjects = expertiseRows.map(
+            (item) => item.subject_name
+        );
 
+        const expertise = {};
 
-                // -----------------------------------------
-                // EMAIL NOT FOUND
-                // -----------------------------------------
+        expertiseRows.forEach((item) => {
+            expertise[item.subject_name] = item.expertise_level;
+        });
 
-                if (results.length === 0) {
+        const {
+            password: storedPassword,
+            ...safeTutor
+        } = tutor;
 
-                    return res.status(401).json({
-                        error:
-                            "Invalid email or password"
-                    });
+        const token = jwt.sign(
+            {
+                id: tutor.tutor_id,
+                role: "tutor",
+                email: tutor.email
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "2h" }
+        );
 
-                }
-
-
-                const tutor = results[0];
-
-
-                // -----------------------------------------
-                // PASSWORD CHECK
-                // -----------------------------------------
-
-                if (!tutor.password) {
-
-                    return res.status(401).json({
-                        error:
-                            "This tutor account does not have a password configured. Please register again or set a password."
-                    });
-
-                }
-
-
-                const passwordMatches =
-                    await bcrypt.compare(
-                        password,
-                        tutor.password
-                    );
-
-
-                if (!passwordMatches) {
-
-                    return res.status(401).json({
-                        error:
-                            "Invalid email or password"
-                    });
-
-                }
-
-
-                // -----------------------------------------
-                // FETCH TUTOR EXPERTISE
-                // -----------------------------------------
-
-                const expertiseSQL = `
-                    SELECT
-                        s.subject_id,
-                        s.subject_name,
-                        s.topic,
-                        te.expertise_level
-                    FROM Tutor_Expertise te
-                    JOIN Subject s
-                        ON te.subject_id = s.subject_id
-                    WHERE te.tutor_id = ?
-                    ORDER BY s.subject_name
-                `;
-
-
-                db.query(
-                    expertiseSQL,
-                    [tutor.tutor_id],
-                    (expertiseErr, expertiseResults) => {
-
-                        if (expertiseErr) {
-
-                            console.error(
-                                "TUTOR EXPERTISE LOGIN ERROR:",
-                                expertiseErr
-                            );
-
-                            return res.status(500).json({
-                                error:
-                                    "Failed to load tutor expertise"
-                            });
-
-                        }
-
-
-                        const subjects =
-                            expertiseResults.map(
-                                (item) =>
-                                    item.subject_name
-                            );
-
-
-                        const expertise = {};
-
-
-                        expertiseResults.forEach(
-                            (item) => {
-
-                                expertise[
-                                    item.subject_name
-                                ] =
-                                    item.expertise_level;
-
-                            }
-                        );
-
-
-                        // -----------------------------------------
-                        // REMOVE PASSWORD BEFORE SENDING RESPONSE
-                        // -----------------------------------------
-
-                        const {
-                            password: storedPassword,
-                            ...safeTutor
-                        } = tutor;
-
-
-                        return res.status(200).json({
-
-                            success: true,
-
-                            message:
-                                "Tutor login successful",
-
-                            tutor: {
-
-                                ...safeTutor,
-
-                                subjects:
-                                    subjects,
-
-                                expertise:
-                                    expertise,
-
-                                expertise_details:
-                                    expertiseResults
-
-                            }
-
-                        });
-
-                    }
-                );
-
+        return res.json({
+            success: true,
+            message: "Tutor login successful.",
+            token,
+            tutor: {
+                ...safeTutor,
+                subjects,
+                expertise,
+                expertise_details: expertiseRows
             }
-        );
-
+        });
     } catch (error) {
-
-        console.error(
-            "TUTOR LOGIN ERROR:",
-            error
-        );
-
+        console.error("TUTOR LOGIN ERROR:", error);
 
         return res.status(500).json({
-            error:
-                "Tutor login failed"
+            success: false,
+            error: "Tutor login failed."
         });
-
     }
-
 });
 
-
-// =====================================================
+// =========================================
 // GET TUTOR PROFILE BY EMAIL
 // GET /api/tutors/profile?email=...
-// =====================================================
+//
+// Legacy profile lookup. Protect private data
+// with JWT authorization before production.
+// =========================================
 
-router.get("/profile", (req, res) => {
+router.get("/profile", async (req, res) => {
+    const email = normalizeEmail(req.query.email);
 
-    const {
-        email
-    } = req.query;
-
-
-    if (!email) {
-
+    if (!isValidEmail(email)) {
         return res.status(400).json({
-            error:
-                "Email is required"
+            success: false,
+            error: "A valid email is required."
         });
-
     }
 
+    try {
+        const [tutorRows] = await db.promise().query(
+            `SELECT
+                tutor_id,
+                name,
+                email,
+                qualification,
+                experience,
+                price_per_session,
+                rating,
+                location,
+                resume_path
+             FROM Tutor
+             WHERE LOWER(email) = ?
+             LIMIT 1`,
+            [email]
+        );
 
-    const tutorSQL = `
-        SELECT
-            tutor_id,
-            name,
-            email,
-            qualification,
-            experience,
-            price_per_session,
-            rating,
-            location,
-            resume_path
-        FROM Tutor
-        WHERE email = ?
-    `;
-
-
-    db.query(
-        tutorSQL,
-        [email.trim()],
-        (err, tutorResults) => {
-
-            if (err) {
-
-                console.error(
-                    "TUTOR PROFILE ERROR:",
-                    err
-                );
-
-                return res.status(500).json({
-                    error:
-                        "Failed to fetch tutor profile",
-                    details:
-                        err.message
-                });
-
-            }
-
-
-            if (tutorResults.length === 0) {
-
-                return res.status(404).json({
-                    error:
-                        "Tutor profile not found"
-                });
-
-            }
-
-
-            const tutor =
-                tutorResults[0];
-
-
-            const expertiseSQL = `
-                SELECT
-                    s.subject_id,
-                    s.subject_name,
-                    s.topic,
-                    te.expertise_level
-                FROM Tutor_Expertise te
-                JOIN Subject s
-                    ON te.subject_id = s.subject_id
-                WHERE te.tutor_id = ?
-                ORDER BY s.subject_name
-            `;
-
-
-            db.query(
-                expertiseSQL,
-                [tutor.tutor_id],
-                (expertiseErr, expertiseResults) => {
-
-                    if (expertiseErr) {
-
-                        console.error(
-                            "TUTOR EXPERTISE ERROR:",
-                            expertiseErr
-                        );
-
-                        return res.status(500).json({
-                            error:
-                                "Failed to fetch tutor expertise",
-                            details:
-                                expertiseErr.message
-                        });
-
-                    }
-
-
-                    const subjects =
-                        expertiseResults.map(
-                            (item) =>
-                                item.subject_name
-                        );
-
-
-                    const expertise = {};
-
-
-                    expertiseResults.forEach(
-                        (item) => {
-
-                            expertise[
-                                item.subject_name
-                            ] =
-                                item.expertise_level;
-
-                        }
-                    );
-
-
-                    return res.json({
-
-                        tutor: {
-
-                            ...tutor,
-
-                            subjects:
-                                subjects,
-
-                            expertise:
-                                expertise,
-
-                            expertise_details:
-                                expertiseResults
-
-                        }
-
-                    });
-
-                }
-            );
-
+        if (!tutorRows.length) {
+            return res.status(404).json({
+                success: false,
+                error: "Tutor profile not found."
+            });
         }
-    );
 
+        const tutor = tutorRows[0];
+
+        const [expertiseRows] = await db.promise().query(
+            `SELECT
+                s.subject_id,
+                s.subject_name,
+                s.topic,
+                te.expertise_level
+             FROM Tutor_Expertise te
+             JOIN Subject s ON te.subject_id = s.subject_id
+             WHERE te.tutor_id = ?
+             ORDER BY s.subject_name`,
+            [tutor.tutor_id]
+        );
+
+        const subjects = expertiseRows.map(
+            (item) => item.subject_name
+        );
+
+        const expertise = {};
+
+        expertiseRows.forEach((item) => {
+            expertise[item.subject_name] = item.expertise_level;
+        });
+
+        return res.json({
+            success: true,
+            tutor: {
+                ...tutor,
+                subjects,
+                expertise,
+                expertise_details: expertiseRows
+            }
+        });
+    } catch (error) {
+        console.error("TUTOR PROFILE ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: "Failed to fetch tutor profile."
+        });
+    }
 });
 
-
-// =====================================================
+// =========================================
 // UPDATE TUTOR PROFILE
 // PUT /api/tutors/:tutorId
-// =====================================================
+// =========================================
 
-router.put("/:tutorId", (req, res) => {
+router.put("/:tutorId", async (req, res) => {
+    const tutorId = Number(req.params.tutorId);
 
-    const tutorId =
-        Number(req.params.tutorId);
+    const name =
+        typeof req.body.name === "string"
+            ? req.body.name.trim()
+            : "";
 
+    const email = normalizeEmail(req.body.email);
 
-    const {
-        name,
-        email,
-        qualification,
-        experience,
-        price_per_session,
-        location
-    } = req.body;
+    const qualification =
+        typeof req.body.qualification === "string"
+            ? req.body.qualification.trim()
+            : "";
 
+    const experience = Number(req.body.experience);
+    const price = Number(req.body.price_per_session);
 
-    // -----------------------------------------
-    // VALIDATE TUTOR ID
-    // -----------------------------------------
+    const location =
+        typeof req.body.location === "string"
+            ? req.body.location.trim()
+            : "";
 
-    if (
-        !Number.isInteger(tutorId) ||
-        tutorId <= 0
-    ) {
-
+    if (!Number.isInteger(tutorId) || tutorId <= 0) {
         return res.status(400).json({
-            error:
-                "Invalid tutor ID"
+            success: false,
+            error: "Invalid tutor ID."
         });
-
     }
-
-
-    // -----------------------------------------
-    // VALIDATE REQUIRED FIELDS
-    // -----------------------------------------
 
     if (
         !name ||
-        !email ||
+        !isValidEmail(email) ||
         !qualification ||
-        experience === undefined ||
-        price_per_session === undefined ||
+        req.body.experience === undefined ||
+        req.body.price_per_session === undefined ||
         !location
     ) {
-
         return res.status(400).json({
-            error:
-                "Name, email, qualification, experience, price and location are required"
+            success: false,
+            error: "Name, valid email, qualification, experience, price and location are required."
         });
-
     }
-
 
     if (
-        !Number.isFinite(
-            Number(experience)
-        ) ||
-        Number(experience) < 0
+        !Number.isFinite(experience) ||
+        experience < 0 ||
+        !Number.isFinite(price) ||
+        price < 0
     ) {
-
         return res.status(400).json({
-            error:
-                "Experience must be a valid non-negative number"
+            success: false,
+            error: "Experience and price must be valid non-negative numbers."
         });
-
     }
 
+    try {
+        const [result] = await db.promise().query(
+            `UPDATE Tutor
+             SET
+                name = ?,
+                email = ?,
+                qualification = ?,
+                experience = ?,
+                price_per_session = ?,
+                location = ?
+             WHERE tutor_id = ?`,
+            [
+                name,
+                email,
+                qualification,
+                experience,
+                price,
+                location,
+                tutorId
+            ]
+        );
 
-    if (
-        !Number.isFinite(
-            Number(price_per_session)
-        ) ||
-        Number(price_per_session) < 0
-    ) {
+        if (!result.affectedRows) {
+            const [existing] = await db.promise().query(
+                "SELECT tutor_id FROM Tutor WHERE tutor_id = ? LIMIT 1",
+                [tutorId]
+            );
 
-        return res.status(400).json({
-            error:
-                "Price must be a valid non-negative number"
-        });
-
-    }
-
-
-    // -----------------------------------------
-    // UPDATE TUTOR
-    // -----------------------------------------
-
-    const sql = `
-        UPDATE Tutor
-        SET
-            name = ?,
-            email = ?,
-            qualification = ?,
-            experience = ?,
-            price_per_session = ?,
-            location = ?
-        WHERE tutor_id = ?
-    `;
-
-
-    const values = [
-
-        name.trim(),
-
-        email.trim(),
-
-        qualification.trim(),
-
-        Number(experience),
-
-        Number(price_per_session),
-
-        location.trim(),
-
-        tutorId
-
-    ];
-
-
-    db.query(
-        sql,
-        values,
-        (err, result) => {
-
-            if (err) {
-
-                console.error(
-                    "TUTOR UPDATE ERROR:",
-                    err
-                );
-
-
-                if (
-                    err.code ===
-                    "ER_DUP_ENTRY"
-                ) {
-
-                    return res.status(409).json({
-                        error:
-                            "This email is already used by another tutor"
-                    });
-
-                }
-
-
-                return res.status(500).json({
-                    error:
-                        "Failed to update tutor profile",
-                    details:
-                        err.message
-                });
-
-            }
-
-
-            if (
-                result.affectedRows === 0
-            ) {
-
+            if (!existing.length) {
                 return res.status(404).json({
-                    error:
-                        "Tutor not found"
+                    success: false,
+                    error: "Tutor not found."
                 });
-
             }
-
-
-            return res.status(200).json({
-
-                success: true,
-
-                message:
-                    "Tutor profile updated successfully",
-
-                tutor: {
-
-                    tutor_id:
-                        tutorId,
-
-                    name:
-                        name.trim(),
-
-                    email:
-                        email.trim(),
-
-                    qualification:
-                        qualification.trim(),
-
-                    experience:
-                        Number(experience),
-
-                    price_per_session:
-                        Number(price_per_session),
-
-                    location:
-                        location.trim()
-
-                }
-
-            });
-
         }
-    );
 
+        return res.json({
+            success: true,
+            message: "Tutor profile updated successfully.",
+            tutor: {
+                tutor_id: tutorId,
+                name,
+                email,
+                qualification,
+                experience,
+                price_per_session: price,
+                location
+            }
+        });
+    } catch (error) {
+        if (error.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({
+                success: false,
+                error: "This email is already used by another account."
+            });
+        }
+
+        console.error("TUTOR UPDATE ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: "Failed to update tutor profile."
+        });
+    }
 });
 
 

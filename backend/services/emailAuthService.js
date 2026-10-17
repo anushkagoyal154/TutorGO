@@ -1,3 +1,4 @@
+
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 
@@ -7,7 +8,6 @@ function normalizeEmail(value) {
         : "";
 }
 
-// Checks email syntax; the verification link confirms ownership.
 function isValidEmail(value) {
     const email = normalizeEmail(value);
 
@@ -17,14 +17,18 @@ function isValidEmail(value) {
     );
 }
 
+function createOtp() {
+    return crypto.randomInt(100000, 1000000).toString();
+}
+
 function createToken() {
     return crypto.randomBytes(32).toString("hex");
 }
 
-function hashToken(token) {
+function hashToken(value) {
     return crypto
         .createHash("sha256")
-        .update(token)
+        .update(value)
         .digest("hex");
 }
 
@@ -46,83 +50,44 @@ function getTransporter() {
     });
 }
 
-async function sendLinkEmail({
-    to,
-    subject,
-    heading,
-    message,
-    url,
-    buttonText
-}) {
+async function sendOtpEmail(email, otp, purpose) {
     const transporter = getTransporter();
+
+    const isReset = purpose === "password_reset";
+    const subject = isReset
+        ? "Your TutorGo password reset code"
+        : "Your TutorGo verification code";
+
+    const heading = isReset
+        ? "Reset your TutorGo password"
+        : "Verify your TutorGo email";
 
     await transporter.sendMail({
         from: `"TutorGo" <${process.env.GMAIL_USER}>`,
-        to,
+        to: email,
         subject,
-        text: `${heading}\n\n${message}\n\n${url}`,
+        text:
+            `Your TutorGo code is ${otp}.\n\n` +
+            "It expires in 10 minutes. Do not share it with anyone.",
         html: `
-            <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;color:#222">
-                <h2 style="color:#6d28d9">${heading}</h2>
-                <p>${message}</p>
-                <p>
-                    <a href="${url}"
-                       style="display:inline-block;background:#6d28d9;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none">
-                        ${buttonText}
-                    </a>
-                </p>
-                <p>If the button does not work, copy this URL:</p>
-                <p style="word-break:break-all">${url}</p>
-                <p>If you did not request this, ignore this email.</p>
-            </div>`
-    });
-}
-
-async function sendVerificationEmail(role, email, token) {
-    const frontendUrl = (
-        process.env.FRONTEND_URL || "http://localhost:5173"
-    ).replace(/\/$/, "");
-
-    const url =
-        `${frontendUrl}/verify-email?role=${encodeURIComponent(role)}` +
-        `&token=${encodeURIComponent(token)}`;
-
-    return sendLinkEmail({
-        to: email,
-        subject: "Verify your TutorGo email",
-        heading: "Verify your TutorGo email",
-        message:
-            "Confirm that you own this email address to activate your TutorGo account. This link expires in 24 hours.",
-        url,
-        buttonText: "Verify email"
-    });
-}
-
-async function sendPasswordResetEmail(role, email, token) {
-    const frontendUrl = (
-        process.env.FRONTEND_URL || "http://localhost:5173"
-    ).replace(/\/$/, "");
-
-    const url =
-        `${frontendUrl}/reset-password?role=${encodeURIComponent(role)}` +
-        `&token=${encodeURIComponent(token)}`;
-
-    return sendLinkEmail({
-        to: email,
-        subject: "Reset your TutorGo password",
-        heading: "Reset your TutorGo password",
-        message:
-            "Use this link to choose a new password. It expires in 30 minutes and can be used once.",
-        url,
-        buttonText: "Reset password"
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;color:#222">
+                <h2 style="color:#4f46e5">${heading}</h2>
+                <p>Enter this code in TutorGo:</p>
+                <div style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#4f46e5;padding:16px 0">
+                    ${otp}
+                </div>
+                <p>This code expires in <strong>10 minutes</strong>.</p>
+                <p>If you did not request this code, ignore this email.</p>
+            </div>
+        `
     });
 }
 
 module.exports = {
     normalizeEmail,
     isValidEmail,
+    createOtp,
     createToken,
     hashToken,
-    sendVerificationEmail,
-    sendPasswordResetEmail
+    sendOtpEmail
 };
