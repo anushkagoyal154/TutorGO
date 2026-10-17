@@ -2,13 +2,10 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// Promise-based database pool
+
 const promiseDb = db.promise();
 
-// =====================================================
-// POST /api/feedback
-// Submit feedback after completed session and update tutor rating
-// =====================================================
+
 
 router.post("/", async (req, res) => {
     const { booking_id, student_id, rating, comments } = req.body;
@@ -161,10 +158,7 @@ router.post("/", async (req, res) => {
     }
 });
 
-// =====================================================
-// GET /api/feedback/booking/:bookingId
-// Get feedback for a booking
-// =====================================================
+
 
 router.get("/booking/:bookingId", async (req, res) => {
     const { bookingId } = req.params;
@@ -190,10 +184,7 @@ router.get("/booking/:bookingId", async (req, res) => {
     }
 });
 
-// =====================================================
-// GET /api/feedback/tutor/:tutorId
-// Get all feedback for a tutor
-// =====================================================
+
 
 router.get("/tutor/:tutorId", async (req, res) => {
     const { tutorId } = req.params;
@@ -206,7 +197,7 @@ router.get("/tutor/:tutorId", async (req, res) => {
              WHERE f.tutor_id = ?
              ORDER BY f.feedback_id DESC`,
             [tutorId]
-        );
+        );//yes
 
         return res.status(200).json({ success: true, feedback });
     } catch (error) {
@@ -219,10 +210,7 @@ router.get("/tutor/:tutorId", async (req, res) => {
     }
 });
 
-// =====================================================
-// GET /api/feedback/tutor/:tutorId/summary
-// Get tutor rating summary
-// =====================================================
+
 
 router.get("/tutor/:tutorId/summary", async (req, res) => {
     const { tutorId } = req.params;
