@@ -1,12 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-
-
 const promiseDb = db.promise();
-
-
-
 router.post("/", async (req, res) => {
     const { booking_id, student_id, rating, comments } = req.body;
 
