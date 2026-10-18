@@ -31,13 +31,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // MATCHING STATES
-
-    // =========================================
-
-
+    
 
     const [result, setResult] = useState(null);
 
@@ -45,12 +39,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // REQUEST STATES
-
-    // =========================================
-
+   
 
 
     const [requestId, setRequestId] = useState(null);
@@ -59,12 +48,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // BOOKING STATES
-
-    // =========================================
-
+   
 
 
     const [bookingId, setBookingId] = useState(null);
@@ -75,11 +59,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // PAYMENT STATES
-
-    // =========================================
+    
 
 
 
@@ -95,12 +75,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // FEEDBACK STATES
-
-    // =========================================
-
+   
 
 
     const [feedbackRating, setFeedbackRating] = useState("5");
@@ -117,11 +92,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // EDIT PROFILE STATES
-
-    // =========================================
+    
 
 
 
@@ -141,11 +112,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // LOADING AND MESSAGE STATES
-
-    // =========================================
+    
 
 
 
@@ -159,9 +126,7 @@ function StudentDashboard({ profile, onLogout }) {
 
     const [connected, setConnected] = useState(false);
 
-    // =========================================
-    // SESSION HISTORY STATES
-    // =========================================
+   
 
     const [studentBookings, setStudentBookings] = useState([]);
     const [bookingsLoading, setBookingsLoading] = useState(false);
@@ -316,13 +281,6 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
-
-    // SUBJECT OPTIONS
-
-    // =========================================
-
-
 
     const subjectOptions = [
 
@@ -366,11 +324,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-    // =========================================
 
-    // SOCKET.IO CONNECTION
-
-    // =========================================
 
 
 
@@ -637,11 +591,6 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-        // =====================================
-
-        // SESSION COMPLETED
-
-        // =====================================
 
 
 
@@ -653,7 +602,6 @@ function StudentDashboard({ profile, onLogout }) {
 
             const currentBookingId = bookingIdRef.current;
 
-            // Completion may refer to a booking other than the last selected one.
             if (data.booking_id) {
                 setBookingId(data.booking_id);
                 bookingIdRef.current = data.booking_id;
