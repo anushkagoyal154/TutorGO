@@ -3,8 +3,7 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// POST /api/payments/mock
-// Demo payment only — no real money is processed.
+
 router.post("/mock", async (req, res) => {
     const {
         booking_id,
