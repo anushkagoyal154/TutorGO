@@ -17,9 +17,7 @@ import {
 
 import "./App.css";
 
-// =====================================================
-// LOCAL STORAGE HELPERS
-// =====================================================
+
 
 const getSavedProfile = () => {
     try {
@@ -35,9 +33,6 @@ const getSavedRole = () => {
     return localStorage.getItem("tutorgo_role");
 };
 
-// =====================================================
-// HOME COMPONENT
-// =====================================================
 
 function Home() {
     const savedProfile = getSavedProfile();
@@ -51,9 +46,7 @@ function Home() {
 
     const [profile, setProfile] = useState(savedProfile);
 
-    // =================================================
-    // SAVE LOGIN SESSION
-    // =================================================
+
 
     const saveSession = (selectedRole, data) => {
         setRole(selectedRole);
@@ -63,13 +56,10 @@ function Home() {
         localStorage.setItem("tutorgo_role", selectedRole);
         localStorage.setItem("tutorgo_profile", JSON.stringify(data));
 
-        // The login components save the JWT token as:
-        // localStorage.setItem("tutorgo_token", data.token)
+       
     };
 
-    // =================================================
-    // LOGOUT / RETURN TO HOME
-    // =================================================
+    
 
     const goToHome = () => {
         setRole(null);
@@ -81,18 +71,13 @@ function Home() {
         localStorage.removeItem("tutorgo_token");
     };
 
-    // =================================================
-    // RETURN TO LOGIN AFTER REGISTRATION
-    // =================================================
+    
 
     const returnToLogin = () => {
         setScreen("login");
     };
 
-    // =================================================
-    // EMAIL VERIFICATION LINK
-    // Example: /verify-email?role=student&token=...
-    // =================================================
+    
 
     const currentPath = window.location.pathname;
 
@@ -100,10 +85,7 @@ function Home() {
         return <VerifyEmailPage />;
     }
 
-    // =================================================
-    // PASSWORD RESET LINK
-    // Example: /reset-password?role=student&token=...
-    // =================================================
+    
 
     if (currentPath === "/reset-password") {
         return (
@@ -116,9 +98,6 @@ function Home() {
         );
     }
 
-    // =================================================
-    // FORGOT PASSWORD
-    // =================================================
 
     if (screen === "forgot-password") {
         return (
@@ -129,9 +108,7 @@ function Home() {
         );
     }
 
-    // =================================================
-    // STUDENT SCREENS
-    // =================================================
+    
 
     if (role === "student") {
         // Student dashboard
@@ -174,9 +151,7 @@ function Home() {
         );
     }
 
-    // =================================================
-    // TUTOR SCREENS
-    // =================================================
+    
 
     if (role === "tutor") {
         // Tutor dashboard
@@ -221,9 +196,7 @@ function Home() {
         );
     }
 
-    // =================================================
-    // LANDING PAGE
-    // =================================================
+    
 
     return (
         <div className="home-page">
