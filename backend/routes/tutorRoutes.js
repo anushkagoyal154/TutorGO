@@ -16,13 +16,6 @@ const {
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 128;
 
-// =========================================
-// CREATE TUTOR ACCOUNT
-// =========================================
-
-// POST /api/tutors
-// Requires a verified registration token
-// =========================================
 
 router.post("/", async (req, res) => {
     const name =
