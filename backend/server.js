@@ -7,7 +7,7 @@ const cron = require("node-cron");
 
 require("dotenv").config();
 
-// Routes
+
 const tutorRoutes = require("./routes/tutorRoutes");
 const resumeRoutes = require("./routes/resumeRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
@@ -20,7 +20,7 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const authRoutes = require("./routes/authRoutes");
 
-// Services
+
 const {
     completeFinishedSessions
 } = require("./services/sessionCompleteService");
