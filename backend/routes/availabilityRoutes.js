@@ -4,9 +4,7 @@ const db = require("../db");
 const router = express.Router();
 
 
-// =====================================================
-// ADD AVAILABILITY SLOT
-// =====================================================
+
 
 router.post("/", (req, res) => {
 
@@ -17,9 +15,7 @@ router.post("/", (req, res) => {
     } = req.body;
 
 
-    // -----------------------------------------
-    // Validation
-    // -----------------------------------------
+    
 
     if (!tutor_id || !start_time || !end_time) {
 
