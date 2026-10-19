@@ -101,8 +101,7 @@ router.post("/registration/send-otp", async (req, res) => {
     }
 });
 
-// POST /api/auth/registration/verify-otp
-// Body: { role, email, otp }
+
 router.post("/registration/verify-otp", async (req, res) => {
     const roleName = String(req.body.role || "").toLowerCase();
     const role = getRole(roleName);
