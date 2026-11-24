@@ -1,0 +1,191 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+const API_BASE_URL = "http://localhost:5000";
+
+function NotificationBell({ role, userId, socket }) {
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [isOpen, setIsOpen] = useState(false);
+    const [error, setError] = useState("");
+    const panelRef = useRef(null);
+
+    const loadNotifications = useCallback(async () => {
+        if (!userId) {
+            setNotifications([]);
+            setUnreadCount(0);
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/notifications/${role}/${userId}`
+            );
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to load notifications.");
+            }
+
+            setNotifications(data.notifications || []);
+            setUnreadCount(Number(data.unreadCount) || 0);
+            setError("");
+        } catch (loadError) {
+            console.error("LOAD NOTIFICATIONS ERROR:", loadError);
+            setError(loadError.message);
+        }
+    }, [role, userId]);
+
+    useEffect(() => {
+        loadNotifications();
+    }, [loadNotifications]);
+
+    useEffect(() => {
+        if (!socket) return undefined;
+
+        socket.on("notificationCreated", loadNotifications);
+        return () => socket.off("notificationCreated", loadNotifications);
+    }, [socket, loadNotifications]);
+
+    useEffect(() => {
+        if (!isOpen) return undefined;
+
+        const closeOnOutsideClick = (event) => {
+            if (!panelRef.current?.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", closeOnOutsideClick);
+        return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+    }, [isOpen]);
+
+    const markAsRead = async (notificationId) => {
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/notifications/${role}/${userId}/${notificationId}/read`,
+                { method: "PATCH" }
+            );
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to update notification.");
+            }
+
+            setNotifications((items) => items.map((item) =>
+                item.notification_id === notificationId
+                    ? { ...item, is_read: 1 }
+                    : item
+            ));
+            const wasUnread = notifications.some(
+                (item) =>
+                    item.notification_id === notificationId &&
+                    !Number(item.is_read)
+            );
+            setNotifications((items) => items.map((item) =>
+                item.notification_id === notificationId
+                    ? { ...item, is_read: 1 }
+                    : item
+            ));
+            if (wasUnread) {
+                setUnreadCount((count) => Math.max(0, count - 1));
+            }
+        } catch (markError) {
+            console.error("MARK NOTIFICATION READ ERROR:", markError);
+            setError(markError.message);
+        }
+    };
+
+    const markAllAsRead = async () => {
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/notifications/${role}/${userId}/read-all`,
+                { method: "PATCH" }
+            );
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to update notifications.");
+            }
+
+            setNotifications((items) => items.map((item) => ({ ...item, is_read: 1 })));
+            setUnreadCount(0);
+        } catch (markError) {
+            console.error("MARK ALL NOTIFICATIONS READ ERROR:", markError);
+            setError(markError.message);
+        }
+    };
+
+    return (
+        <div className="notification-bell" ref={panelRef}>
+            <button
+                type="button"
+                className="notification-bell-button"
+                aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+                aria-expanded={isOpen}
+                onClick={() => {
+                    setIsOpen((open) => !open);
+                    if (!isOpen) loadNotifications();
+                }}
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+                </svg>
+                <span>Notifications</span>
+                {unreadCount > 0 && (
+                    <span className="notification-count">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                )}
+            </button>
+
+            {isOpen && (
+                <section className="notification-panel" aria-label="Recent notifications">
+                    <div className="notification-panel-header">
+                        <div>
+                            <strong>Notifications</strong>
+                            <small>{unreadCount} unread</small>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={markAllAsRead}
+                            disabled={unreadCount === 0}
+                        >
+                            Mark all read
+                        </button>
+                    </div>
+
+                    {error && <p className="notification-error">{error}</p>}
+                    {!error && notifications.length === 0 && (
+                        <p className="notification-empty">You’re all caught up.</p>
+                    )}
+
+                    <div className="notification-list">
+                        {notifications.map((notification) => (
+                            <button
+                                type="button"
+                                className={`notification-item${Number(notification.is_read) ? "" : " unread"}`}
+                                key={notification.notification_id}
+                                onClick={() => {
+                                    if (!Number(notification.is_read)) {
+                                        markAsRead(notification.notification_id);
+                                    }
+                                }}
+                            >
+                                <span className="notification-item-dot" />
+                                <span className="notification-item-content">
+                                    <strong>{notification.title}</strong>
+                                    <span>{notification.message}</span>
+                                    <time dateTime={notification.created_at}>
+                                        {new Date(notification.created_at).toLocaleString()}
+                                    </time>
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </section>
+            )}
+        </div>
+    );
+}
+
+export default NotificationBell;
